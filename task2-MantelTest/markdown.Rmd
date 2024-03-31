@@ -1,0 +1,216 @@
+---
+title: "Test de Mantel"
+author: "Brayan Cubides - Sebastian Gil - Andrés Rache - Dereck Rozo"
+date: "2024-03-31"
+output:
+  rmdformats::downcute:
+    downcute_theme: "chaos"
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r libraries, echo=FALSE , include=FALSE}
+library(geosphere)
+library(vegan)
+```
+
+```{r data_importation,echo=FALSE}
+load("data.RData")
+precipitacion <- calidad[calidad$Variable == 'Precipitación Líquida', 
+                  c( "Latitud", "Longitud", "Fecha","Departamento",
+                     "Nombre.del.municipio","Unidades","Variable","Concentración")]
+
+precip <- precipitacion
+```
+
+
+# Introducción 
+La precipitación es un tema de gran interés en la estadística a nivel global. En el presente documento, se presenta una aplicación del test de Mantel utilizando datos reales sobre la precipitación en dos regiones de Colombia: Bogotá y Antioquia. Se llevará a cabo un análisis para determinar si existe una relación entre la variable de precipitación (medida en milímetros) y la ubicación geográfica de estas regiones, expresada en longitud y latitud.
+
+## Los datos
+Los datos con los cuales se hizo el artículo son *Datos de Calidad de aire (Inmisión) y variables climatológicas, reportadas por las Autoridades Ambientales al SISAIRE ( Subsistema de Información de la Calidad del Aire) durante los años 2011 - 2017*, extraído de **Datos Abiertos**. 
+
+## Test de Mantel 
+El test de Mantel es un análisis estadístico de correlación que se emplea para comparar dos matrices de igual rango. Es comúnmente utilizado para evaluar la relación entre dos matrices de distancias. Principalmente, se emplea el coeficiente de correlación de Pearson para este propósito.
+
+En esencia, este test permite determinar si existe una correlación significativa entre la precipitación y la distancia geográfica de las áreas de estudio.
+
+# Metodología 
+A continuación veremos el paso a paso que fue necesario para hacer el test de 
+Mantel para los dos ejemplos escogidos, desde la limpieza y refinación del 
+conjutno de datos hasta la creación de matrices distancias para la aplicación e 
+interpretación del Test de Mantel. 
+
+## Análisis Exploratorio de los datos
+
+En una primera fase, se llevará a cabo un análisis exploratorio de los datos disponibles. Este análisis permitirá comprender el tipo de variables con las que se cuenta para el estudio, lo que facilitará la interpretación de los resultados obtenidos en el análisis estadístico posterior.
+
+```{r exploratory,collapse = TRUE}
+names(precip)
+table(precip[precip$Departamento == "CUNDINAMARCA", ]$Nombre.del.municipio)
+table(precip[precip$Departamento == "ANTIOQUIA", ]$Nombre.del.municipio)
+```
+Del análisis exploratorio vale la pena rescatar que, nuestra variable interés 
+será *Concentración*, también que en el departamento de Cundinamarca solo se
+tomaron datos de la ciudad de Bogotá y en el departamento de Antioquia si tenemos
+una amplia variedad de municipios de los cuál podemos tomar ventaja. 
+
+## Ejemplo 1: Bogotá
+
+### Filtrado del conjunto de datos
+Primeramente lo que se hará con el conjunto de datos de Bogotá es buscar la 
+fecha de la cuál se tengan más datos, teniendo en cuenta que nuestos datos son 
+espacio-temporales. 
+
+```{r bogota, echo=FALSE,collapse = TRUE}
+precip_b <- precip[precip$Departamento == "CUNDINAMARCA", ]
+precip_b <- subset(precip_b, select = c("Latitud", "Longitud", "Fecha",
+                                        "Nombre.del.municipio", "Concentración",
+                                        "Variable"))
+precip_b$Fecha <- as.Date(precip_b$Fecha, format = "%d/%m/%Y")
+tabla_frecuencias <- table(precip_b$Fecha)
+fecha_con_maximo_conteo <- names(tabla_frecuencias)[which.max(tabla_frecuencias)]
+head(precip_b)
+```
+A continuación la fecha que más datos presenta: 
+```{r fecha-bogota, echo=TRUE, collapse = TRUE}
+print(fecha_con_maximo_conteo)
+```
+```{r filtrado-bogota, echo=FALSE}
+precip_b = precip_b[precip_b$Fecha == '2011-09-29',]
+```
+
+### Test de Mantel
+
+Ahora relizaremos el test de Mantel comparando así la matriz de distancia euclidianas
+de la precipatación con la matriz de distancias geográficas.
+```{r aislando-bogota, echo=FALSE,collapse = TRUE}
+## Aislando los datos ----
+### Latitud y longitud ----
+geo = data.frame(precip_b$Longitud , precip_b$Latitud)
+
+### Precipitacion en mm ----
+con = precip_b$Concentración
+
+## Transformación a matrices de distancias ----
+### Latitud y longitud ----
+d.geo = distm(geo, fun = distHaversine)
+dist.geo = as.dist(d.geo)
+
+### Concentracion ----
+dist.con = dist(con, method = "euclidean")
+```
+
+* **Mantel statistic r:** -0.0008443
+* **Significance:** 0.4151
+
+```{r test-bogota, echo=TRUE ,collapse = TRUE}
+### Concentración vs Geografico
+con_geo = mantel(dist.con, dist.geo, method = "spearman", permutations = 9999,
+                 na.rm = TRUE)
+con_geo
+```
+
+-  El valor de la *estadística de Mantel (r)* indica la fuerza y dirección de la correlación entre las dos matrices de distancias. En este caso, el valor es muy cercano a cero, lo que sugiere que no hay una correlación clara entre la precipitación en Bogotá y la ubicación geográfica.
+
+- Con un **valor de significancia** de 0.4151, no hay suficiente evidencia para rechazar la hipótesis nula. Es decir, no hay suficiente evidencia para afirmar que hay una correlación espacial significativa entre la precipitación y la ubicación geográfica en Bogotá.
+
+## Ejemplo 2: Antioquia 
+
+### Filtrado del conjunto de datos
+
+Primeramente lo que se hará con el conjunto de datos de Antioquia es buscar la 
+fecha de la cuál se tengan más datos, teniendo en cuenta que nuestos datos son 
+espacio-temporales. 
+
+```{r antioquia, echo=FALSE}
+## Filtrado por Departamento = "ANTIOQUIA" 
+precip_a <- precip[precip$Departamento == "ANTIOQUIA", ]
+
+# Cambiar formato de fecha: Str -> Date
+precip_a$Fecha <- as.Date(precip_a$Fecha, format = "%d/%m/%Y")
+
+tabla_frecuencias <- table(precip_a$Fecha)
+fecha_con_maximo_conteo <- names(tabla_frecuencias)[which.max(tabla_frecuencias)]
+
+
+precip_a <- subset(precip_a, select = c("Latitud", "Longitud", "Fecha",
+                                        "Nombre.del.municipio", "Concentración",
+                                        "Variable"))
+```
+```{r fecha-antioquia, echo=TRUE}
+print(fecha_con_maximo_conteo)
+```
+```{r filtrado-antioquia, echo=TRUE,collapse = TRUE}
+## Filtrado de fecha: Primero de enero de 2018 ----
+precip_a = precip_a[precip_a$Fecha == '2018-01-01',]
+precip_a <- precip_a[!is.na(precip_a$Concentración), ]
+
+```
+
+### Filtrado de columnas: Georeferencia y valor de la variable  
+Ahora solo filtraremos la tabla para la fecha seleccionada, como se muestra a 
+continuación: 
+```{r}
+head(precip_a)
+```
+
+### Test de Mantel 
+
+Ahora relizaremos el test de Mantel comparando así la matriz de distancia euclidianas
+de la precipatación con la matriz de distancias geográficas.
+```{r aislando-antioquia, echo=FALSE,collapse = TRUE}
+## Aislando los datos ----
+### Latitud y longitud ----
+geo = data.frame(precip_a$Longitud , precip_a$Latitud)
+
+### Precipitacion en mm ----
+con = precip_a$Concentración
+
+## Transformación a matrices de distancias ----
+### Latitud y longitud ----
+d.geo = distm(geo, fun = distHaversine)
+dist.geo = as.dist(d.geo)
+
+### Concentracion ----
+dist.con = dist(con, method = "euclidean")
+```
+
+* **Mantel statistic r:** -0.0269
+* **Significance:** 0.794
+
+
+```{r test-antioquia,collapse = TRUE}
+con_geo = mantel(dist.con, dist.geo, method = "spearman", permutations = 9999,
+                 na.rm = TRUE)
+con_geo
+```
+- El valor de la *estadística de Mantel (r)* indica la fuerza y dirección de la correlación entre las dos matrices de distancias. En este caso, el valor negativo indica una correlación negativa, lo que sugiere que a medida que aumenta la distancia geográfica entre las ubicaciones, la diferencia en la precipitación disminuye ligeramente.    
+
+- Respecto a la *significancia*, un valor de 0.794 indica que no hay evidencia suficiente para rechazar la hipótesis nula. Es decir, no hay suficiente evidencia para afirmar que hay una correlación espacial significativa entre la precipitación en Antioquia y la ubicación geográfica.
+
+
+### Gráfica de dispersión
+A continuación veremos la gráfica de dispersión de la distancia geográfica contrastada con la disimilitud de precipitación. 
+```{r dispersion-antioquia, echo = FALSE, collapse = TRUE,  fig.align='center'}
+matrizgeo <- as.matrix(dist.geo)
+matrizcon <- as.matrix(dist.con)
+plot(matrizgeo, matrizcon, pch=16, cex=1, col="black",main = "Todos los municipios de Antioquia", xlab="Distancia geográfica (m)", ylab="Disimilitud de precipitación (mm)")
+```
+
+De esta se puede observar que hay agrupaciones en los conjuntos, es un resultado 
+a pesar de interesante, esperado, debido a que alrededor de cada municipio se
+tendrá una precipitación similar, y se agruparan las precipitaciones a cada zona. 
+
+# Referencias 
+* Paula Moraga. (2024). Spatial Statistics for Data Science. CRC Press.
+* Oliver Schabenberger & Carol A. Gotway. (2005). Statistical Methods for Spatial Data Analysis. Chapman & Hall CRC.
+* *jkzorz*. (2019). Mantel Test in R. Recuperado de <https://jkzorz.github.io/2019/07/08/mantel-test.html>
+
+

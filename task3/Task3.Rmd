@@ -1,0 +1,203 @@
+---
+title: "Tarea 3 - Estadística Espacial"
+author: "Brayan Cubides - Sebastian Gil - Andrés Rache - Dereck Rozo"
+date: "2024-03-03"
+output: 
+  rmdformats::material:
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(MASS)
+library(fields)
+
+```
+
+# Punto 1
+Simule un proceso Gaussiano de $n=100$ puntos equiespaciados con vector de medias $\mu$ y matriz de covarianzas $\Sigma$ definida por un modelo de covarianza exponencial $C(h)=\sigma^2-\gamma(h)$, con $ \gamma(h) = \sigma \exp\left(-\frac{h}{\phi}\right)$.
+
+```{r proceso_gaussiano}
+set.seed(12345)
+
+n <- 100
+sigma <- 1
+phi <- 2
+
+# Define la matriz de distancias
+dist_matrix <- matrix(0, n, n)
+for (i in 1:n) {
+  for (j in 1:n) {
+    dist_matrix[i, j] <- abs(i - j)}}
+
+# Define la función de covarianza exponencial
+cov_exponential <- function(h, sigma, phi) {
+  return(sigma^2 * exp(-h / phi))}
+
+Sigma <- cov_exponential(dist_matrix, sigma, phi) #matriz de covarianza
+
+mu <- rep(0, n) #Vector de medias
+
+# Simula un proceso gaussiano
+set.seed(123)
+simulated_data <- rmvnorm(1, mean = mu, sigma = Sigma)
+
+# View(simulated_data)
+```
+
+```{r gaussian_process, echo=FALSE}
+# Visualiza los datos simulados
+plot(1:n, simulated_data, type = "l", main = "Simulación de Proceso Gaussiano",
+     xlab = "Ubicación Espacial", ylab = "Valor", col = "coral1")
+```
+
+# Punto 2
+Calcule $\hat{\gamma}(h,\theta)$ el estimador de Matheron (de momentos)
+
+
+## Estimador de Matheron
+El estimador de Matheron para el parámetro de la función de covarianza exponencial puede calcularse utilizando la matriz de covarianza muestral. Para la función de covarianza exponencial, la expresión es la siguiente:
+
+\[ \hat{\gamma}(h, \theta) = \hat{\sigma}^2 \left(1 - \exp\left(-\frac{h}{\hat{\phi}}\right)\right) \]
+
+Donde:
+- \(\hat{\sigma}^2\) es la varianza muestral.
+- \(\hat{\phi}\) es el estimador de Matheron para el parámetro \(\phi\).
+
+A continuación, te muestro cómo puedes calcular este estimador en R basándote en el proceso gaussiano simulado anteriormente:
+
+
+
+```{r matheron}
+# Calcular estimador de Matheron para diferentes distancias h
+distancias_h <- 1:50
+
+resultados_matheron <- numeric(length(distancias_h))  # Vector para almacenar resultados
+
+estimador_matheron <- function(datos, h) {
+  n <- length(datos)
+  suma <- 0
+  for (i in 1:(n - h)) {
+    suma <- suma + (datos[i] - datos[i + h])^2}
+  return((1 / (2 * (n-1)))*suma)}
+
+
+# Calcular estimador de Matheron para cada h
+for (i in seq_along(distancias_h)) {
+  resultado_matheron <- estimador_matheron(simulated_data, distancias_h[i])
+  resultados_matheron[i] <- resultado_matheron
+}
+
+# Graficar resultados
+plot(distancias_h, resultados_matheron, type = "b", 
+     main = "Estimador de Matheron para diferentes distancias",
+     xlab = "Distancia (h)", ylab = "Estimador de Matheron")
+
+```
+
+
+
+
+# Punto 3
+Revise la teoría de la función $\texttt{optim}$ de R
+
+## Teoría de la función `optim` en R
+
+La función `optim` en R se utiliza para realizar optimización numérica, es decir, encontrar el mínimo (o máximo) de una función objetivo. La optimización numérica es comúnmente utilizada en áreas donde es necesario ajustar parámetros para que una función se ajuste mejor a datos observados.
+
+## Sintaxis básica de `optim`:
+
+La sintaxis básica de `optim` es la siguiente:
+
+```r
+optim(par, fn, ...)
+```
+* `par`Vector inicial de parámetros 
+* `fn` Función que se busca minimizar
+* `...` Otros argumentos (por ejemplo si se quiere maximizar)
+
+
+## Ejemplo de Optimización con la Función Cuadrática \(f(x) = x^2\)
+
+### Definición de la Función Objetivo
+
+Definimos la función cuadrática objetivo \(f(x) = x^2\):
+
+```{r optim1}
+# Definir la función objetivo cuadrática
+objective_function <- function(x) {
+  return(x^2)
+}
+# Especificar el valor inicial de x
+initial_x <- 2
+
+# Aplicar optimización
+suppressWarnings(result <- optim(par = initial_x, fn = objective_function))
+
+# Mostrar los resultados
+cat("Valor mínimo de x:", result$par, "\n")
+cat("Valor mínimo de la función:", result$value, "\n")
+
+```
+```{r optim2, echo=FALSE}
+
+# Graficar la función y el mínimo encontrado
+x_values <- seq(-5, 5, length.out = 100)
+y_values <- objective_function(x_values)
+
+plot(x_values, y_values, type = "l", lwd = 2, col = "blue",
+     main = "Optimización de la Función Cuadrática",
+     xlab = "x", ylab = "f(x)")
+
+points(result$par, result$value, col = "red", pch = 16, cex = 1.5)
+```
+
+
+
+# Punto 4
+Use la función $\texttt{optim}$ de R para estimar el modelo de covarianza exponencial  (es decir estime $\sigma^2$ y $\phi$ asumiendo un modelo de covarianza exponencial)
+
+```{r optim_in_model}
+# Definir la función objetivo (negativo del logaritmo de la verosimilitud)
+neg_log_likelihood <- function(params, data, dist_matrix) {
+  sigma_sq <- params[1]
+  phi <- params[2]
+  n <- length(data)
+  
+  # Matriz de covarianza exponencial
+  Sigma <- sigma_sq * exp(-dist_matrix / phi)
+  
+  # Convertir data en un vector
+  data_vector <- as.vector(data)
+  
+  # Logaritmo de la verosimilitud
+  log_likelihood <- -0.5 * log(det(Sigma)) - 0.5 * t(data_vector) %*% solve(Sigma) %*% data_vector
+  
+  return(-log_likelihood)  # Negativo del logaritmo de la verosimilitud
+}
+
+# Datos y matriz de distancias
+data <- as.matrix(simulated_data)
+
+# Parámetros iniciales y restricciones
+initial_params <- c(1, 1)  # Valores iniciales de los parámetros
+lower_bound <- c(0, 0)      # Límites inferiores para los parámetros
+upper_bound <- c(Inf, Inf)   # Límites superiores para los parámetros
+
+# Optimización usando optim
+optimal_params <- optim(par = initial_params, fn = neg_log_likelihood, 
+                        data = data, dist_matrix = dist_matrix, 
+                        method = "L-BFGS-B", lower = lower_bound, upper = upper_bound)$par
+```
+
+## Párametros estimados
+```{r optin_model2}
+# Imprimir resultados
+cat("Estimación de sigma^2:", optimal_params[1], "\n")
+cat("Estimación de phi:", optimal_params[2], "\n")
+```
+
+
